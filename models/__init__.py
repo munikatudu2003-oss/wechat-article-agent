@@ -1,3 +1,3 @@
-from .article import DraftDocument, MockFeishuRecord, ReviewDecision
+from .article import ArticleTask, DraftDocument, ReviewDecision
 
-__all__ = ["DraftDocument", "MockFeishuRecord", "ReviewDecision"]
+__all__ = ["ArticleTask", "DraftDocument", "ReviewDecision"]

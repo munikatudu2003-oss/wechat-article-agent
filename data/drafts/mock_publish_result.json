@@ -2,8 +2,8 @@
   "mode": "dry_run",
   "status": "draft_created",
   "draft_id": "mock-draft-001",
-  "title": "Real mode Feishu record title",
+  "title": "Turning a Feishu note into a WeChat article draft",
   "review_status": "approved",
   "cover": "TODO: add cover asset before real publish",
-  "published_at": "2026-03-15T13:22:31.241530+00:00"
+  "published_at": "2026-03-15T13:31:31.605362+00:00"
 }

@@ -25,6 +25,7 @@ What is already working:
 - review result output
 - publisher dry-run output
 - switchable `FeishuService` entrypoint with `mock` and `real` modes
+- real-mode pending record listing and record status write-back skeleton
 - placeholder publish queue script
 - placeholder publish status sync script
 
@@ -51,7 +52,7 @@ This repository is intentionally small right now, but the code is now split into
   - `MarkdownService`
   - `OutputService`
 - `models/`
-  - shared dataclasses for records, drafts, and review results
+  - shared dataclasses for article tasks, drafts, and review results
 - `utils/`
   - small helpers such as time formatting
 - `config/`
@@ -144,12 +145,12 @@ Optional settings:
 ```powershell
 $env:FEISHU_VIEW_ID='your_view_id'
 $env:FEISHU_PAGE_SIZE='1'
-$env:FEISHU_FIELD_TITLE='文章标题'
-$env:FEISHU_FIELD_SUMMARY='摘要'
-$env:FEISHU_FIELD_CATEGORY='栏目类型'
-$env:FEISHU_FIELD_KEYWORDS='关键词'
-$env:FEISHU_FIELD_REFERENCE='参考素材'
-$env:FEISHU_FIELD_WORD_COUNT='目标字数'
+$env:FEISHU_FIELD_TITLE='ArticleTitle'
+$env:FEISHU_FIELD_SUMMARY='ArticleSummary'
+$env:FEISHU_FIELD_CATEGORY='Category'
+$env:FEISHU_FIELD_KEYWORDS='Keywords'
+$env:FEISHU_FIELD_REFERENCE='ReferenceMaterial'
+$env:FEISHU_FIELD_WORD_COUNT='TargetWordCount'
 ```
 
 Replace those field names with the real column names from your Feishu table.
@@ -157,8 +158,10 @@ Replace those field names with the real column names from your Feishu table.
 In `real` mode, the service now:
 
 - requests a tenant access token
-- fetches the first record from the configured bitable table
+- lists records from the configured bitable table
+- filters pending records by content status unless disabled
 - maps configured field names into the existing draft model
+- writes generation results back into the source record
 - keeps the rest of the pipeline unchanged
 
 Run the publish queue placeholder:
@@ -184,6 +187,13 @@ After running `run_generate_draft.py`, these files should exist in `data/drafts/
 - `mock_review.json`
 - `mock_publish_result.json`
 
+In `real` mode, generated files use the record id as a prefix, for example:
+
+- `rec_real_001_output.md`
+- `rec_real_001_output.html`
+- `rec_real_001_output_review.json`
+- `rec_real_001_output_publish_result.json`
+
 These outputs confirm:
 
 - mock record ingestion works
@@ -191,6 +201,7 @@ These outputs confirm:
 - markdown conversion works
 - review status is produced
 - publish preparation is simulated without any real API call
+- real-mode records can be read and updated without changing the rest of the pipeline
 
 ## Git Status
 

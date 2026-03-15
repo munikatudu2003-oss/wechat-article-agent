@@ -1,17 +1,17 @@
-# Real mode Feishu record title
+# Turning a Feishu note into a WeChat article draft
 
 ## Summary
-This record was loaded through the real-mode Feishu skeleton against a local fake API.
+This mock draft shows the full offline pipeline from a local record through review, formatting, and a dry-run publish result.
 
 ## Key Points
-- Category: Automation
-- Keywords: feishu, bitable, real-mode
-- Reference: Local fake Feishu server
+- Column type: Automation
+- Keywords: wechat, feishu, mock
 - Target word count: 800
+- Reference material: Local mock record for smoke testing.
 
 ## Suggested Structure
 Start with the business context, then explain the workflow, and end with a practical next step.
 
 ## Source
-- Feishu mock record: rec-real-001
-- Reference link: feishu://bitable/rec-real-001
+- Feishu record: mock-record-001
+- Reference link: mock://feishu/article-record/001

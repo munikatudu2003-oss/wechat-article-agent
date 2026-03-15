@@ -5,7 +5,8 @@ from typing import Any
 from urllib import parse, request
 
 from config import settings
-from models.article import MockFeishuRecord
+from models.article import ArticleTask
+from utils.time_utils import now_iso
 
 
 class FeishuService:
@@ -13,40 +14,99 @@ class FeishuService:
         self._source_mode = (source_mode or settings.FEISHU_SOURCE_MODE).strip().lower()
         if self._source_mode not in {"mock", "real"}:
             raise ValueError("FEISHU_SOURCE_MODE must be either 'mock' or 'real'.")
+        self._tenant_access_token: str | None = None
 
     @property
     def source_mode(self) -> str:
         return self._source_mode
 
-    def get_record(self) -> MockFeishuRecord:
-        if self._source_mode == "mock":
-            return self.get_mock_record()
-        return self.get_real_record()
+    def get_record(self) -> ArticleTask:
+        records = self.list_pending_records(limit=1)
+        if not records:
+            raise ValueError(f"No records available in FeishuService mode '{self._source_mode}'.")
+        return records[0]
 
-    def get_mock_record(self) -> MockFeishuRecord:
-        return MockFeishuRecord(
+    def list_pending_records(self, limit: int | None = None) -> list[ArticleTask]:
+        if self._source_mode == "mock":
+            records = [self.get_mock_record()]
+        else:
+            records = self.get_real_records(limit=limit or settings.FEISHU_MAX_RECORDS)
+            if settings.FEISHU_PENDING_ONLY:
+                records = [record for record in records if not record.content_status or record.content_status == settings.FEISHU_STATUS_PENDING]
+
+        if limit is not None:
+            return records[:limit]
+        return records
+
+    def get_mock_record(self) -> ArticleTask:
+        return ArticleTask(
             record_id="mock-record-001",
             title="Turning a Feishu note into a WeChat article draft",
             summary="This mock draft shows the full offline pipeline from a local record through review, formatting, and a dry-run publish result.",
-            bullet_points=[
-                "WriterAgent asks the local LLMService skeleton for a first draft.",
-                "ReviewAgent marks the draft as approved unless it is too short.",
-                "FormatterAgent converts markdown into a readable HTML article.",
-                "PublisherAgent returns a dry-run payload instead of calling a real API.",
-            ],
+            column_type="Automation",
+            keywords="wechat, feishu, mock",
+            target_words=800,
+            source_material="Local mock record for smoke testing.",
+            content_markdown="",
+            cover_prompt="TODO: add cover asset before real publish",
+            cover_path="",
             source_url="mock://feishu/article-record/001",
         )
 
-    def get_real_record(self) -> MockFeishuRecord:
+    def get_real_records(self, limit: int) -> list[ArticleTask]:
         self._validate_real_mode_settings()
-
         tenant_access_token = self._get_tenant_access_token()
-        record = self._fetch_first_bitable_record(tenant_access_token)
-        fields = record.get("fields")
-        if not isinstance(fields, dict):
-            raise ValueError("Feishu record payload is missing a valid 'fields' object.")
+        raw_records = self._fetch_bitable_records(tenant_access_token, limit=limit)
+        tasks: list[ArticleTask] = []
 
-        return self._map_record_fields(record, fields)
+        for record in raw_records:
+            fields = record.get("fields")
+            if not isinstance(fields, dict):
+                continue
+            tasks.append(self._map_record_fields(record, fields))
+
+        return tasks
+
+    def update_record_status(
+        self,
+        record_id: str,
+        *,
+        content_status: str | None = None,
+        review_status: str | None = None,
+        draft_id: str | None = None,
+        summary: str | None = None,
+        content_markdown: str | None = None,
+        cover_prompt: str | None = None,
+        cover_path: str | None = None,
+        last_error: str | None = None,
+    ) -> dict[str, Any]:
+        fields: dict[str, Any] = {}
+
+        if content_status is not None:
+            fields[settings.FEISHU_FIELD_CONTENT_STATUS] = content_status
+        if review_status is not None:
+            fields[settings.FEISHU_FIELD_REVIEW_STATUS] = review_status
+        if draft_id is not None:
+            fields[settings.FEISHU_FIELD_DRAFT_ID] = draft_id
+        if summary is not None:
+            fields[settings.FEISHU_FIELD_SUMMARY] = summary
+        if content_markdown is not None:
+            fields[settings.FEISHU_FIELD_CONTENT_MARKDOWN] = content_markdown
+        if cover_prompt is not None:
+            fields[settings.FEISHU_FIELD_COVER_PROMPT] = cover_prompt
+        if cover_path is not None:
+            fields[settings.FEISHU_FIELD_COVER_PATH] = cover_path
+        if last_error is not None:
+            fields[settings.FEISHU_FIELD_LAST_ERROR] = last_error
+
+        fields[settings.FEISHU_FIELD_PROCESSED_AT] = now_iso()
+
+        if self._source_mode == "mock":
+            return {"mode": "mock", "record_id": record_id, "fields": fields}
+
+        self._validate_real_mode_settings()
+        tenant_access_token = self._get_tenant_access_token()
+        return self._update_bitable_record(tenant_access_token, record_id, fields)
 
     def _validate_real_mode_settings(self) -> None:
         required = {
@@ -61,6 +121,9 @@ class FeishuService:
             raise ValueError(f"Real Feishu mode requires these environment variables: {missing_text}")
 
     def _get_tenant_access_token(self) -> str:
+        if self._tenant_access_token:
+            return self._tenant_access_token
+
         payload = {
             "app_id": settings.FEISHU_APP_ID,
             "app_secret": settings.FEISHU_APP_SECRET,
@@ -75,9 +138,10 @@ class FeishuService:
         token = data.get("tenant_access_token")
         if not isinstance(token, str) or not token.strip():
             raise ValueError("Feishu auth response did not include tenant_access_token.")
+        self._tenant_access_token = token
         return token
 
-    def _fetch_first_bitable_record(self, tenant_access_token: str) -> dict[str, Any]:
+    def _fetch_bitable_records(self, tenant_access_token: str, limit: int) -> list[dict[str, Any]]:
         query: dict[str, str] = {"page_size": str(settings.FEISHU_PAGE_SIZE)}
         if settings.FEISHU_VIEW_ID:
             query["view_id"] = settings.FEISHU_VIEW_ID
@@ -93,10 +157,19 @@ class FeishuService:
         if not isinstance(items, list) or not items:
             raise ValueError("Feishu bitable returned no records.")
 
-        first = items[0]
-        if not isinstance(first, dict):
-            raise ValueError("Feishu bitable returned an invalid record payload.")
-        return first
+        valid_items = [item for item in items if isinstance(item, dict)]
+        return valid_items[:limit]
+
+    def _update_bitable_record(self, tenant_access_token: str, record_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+        return self._request_json(
+            method="PUT",
+            path=f"/bitable/v1/apps/{settings.FEISHU_APP_TOKEN}/tables/{settings.FEISHU_TABLE_ID}/records/{record_id}",
+            headers={
+                "Authorization": f"Bearer {tenant_access_token}",
+                "Content-Type": "application/json; charset=utf-8",
+            },
+            payload={"fields": fields},
+        )
 
     def _request_json(
         self,
@@ -133,7 +206,7 @@ class FeishuService:
             raise ValueError("Feishu API response did not include a valid data object.")
         return data
 
-    def _map_record_fields(self, record: dict[str, Any], fields: dict[str, Any]) -> MockFeishuRecord:
+    def _map_record_fields(self, record: dict[str, Any], fields: dict[str, Any]) -> ArticleTask:
         title = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_TITLE))
         if not title:
             title = self._coerce_to_text(fields.get("title"))
@@ -144,32 +217,29 @@ class FeishuService:
         category = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_CATEGORY))
         keywords = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_KEYWORDS))
         reference = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_REFERENCE))
-        word_count = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_WORD_COUNT))
-
-        bullet_points = [
-            point
-            for point in [
-                f"Category: {category}" if category else "",
-                f"Keywords: {keywords}" if keywords else "",
-                f"Reference: {reference}" if reference else "",
-                f"Target word count: {word_count}" if word_count else "",
-            ]
-            if point
-        ]
+        word_count = self._coerce_to_int(fields.get(settings.FEISHU_FIELD_WORD_COUNT))
+        content_markdown = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_CONTENT_MARKDOWN))
+        cover_prompt = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_COVER_PROMPT))
+        cover_path = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_COVER_PATH))
+        content_status = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_CONTENT_STATUS))
 
         if not summary:
             summary = "Imported from a live Feishu record. Review the mapped fields before using this draft for real publishing."
 
-        if not bullet_points:
-            bullet_points = ["Imported from Feishu in real mode. Add richer field mapping once the upstream schema is stable."]
-
         record_id = self._coerce_to_text(record.get("record_id")) or "feishu-record"
-        return MockFeishuRecord(
+        return ArticleTask(
             record_id=record_id,
             title=title,
             summary=summary,
-            bullet_points=bullet_points,
+            column_type=category,
+            keywords=keywords,
+            target_words=word_count,
+            source_material=reference,
+            content_markdown=content_markdown,
+            cover_prompt=cover_prompt,
+            cover_path=cover_path,
             source_url=f"feishu://bitable/{record_id}",
+            content_status=content_status,
         )
 
     def _coerce_to_text(self, value: Any) -> str:
@@ -189,3 +259,12 @@ class FeishuService:
                     return text
             return json.dumps(value, ensure_ascii=False)
         return str(value).strip()
+
+    def _coerce_to_int(self, value: Any) -> int | None:
+        text = self._coerce_to_text(value)
+        if not text:
+            return None
+        try:
+            return int(float(text))
+        except ValueError:
+            return None
