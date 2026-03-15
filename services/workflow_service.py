@@ -10,7 +10,7 @@ from services.feishu_service import FeishuService
 from services.llm_service import LLMService
 from services.markdown_service import MarkdownService
 from services.output_service import OutputService
-from services.wechat_publisher_service import WechatPublisherService
+from services.wechat_mp_service import WechatMPService
 
 
 class WorkflowService:
@@ -20,8 +20,13 @@ class WorkflowService:
         writer = WriterAgent(LLMService())
         review_agent = ReviewAgent()
         formatter = FormatterAgent(MarkdownService())
-        publisher = PublisherAgent(WechatPublisherService())
+        publisher = PublisherAgent(WechatMPService())
         output_service = OutputService()
+
+        print(
+            f"[workflow] start mode={feishu_service.source_mode} "
+            f"limit={workflow_options.limit} confirm_publish={workflow_options.confirm_publish}"
+        )
 
         try:
             records = feishu_service.list_pending_records(limit=workflow_options.limit)
@@ -52,33 +57,62 @@ class WorkflowService:
 
         for index, record in enumerate(records, start=1):
             try:
+                print(f"[workflow] processing record={record.record_id}")
                 if feishu_service.source_mode == "real":
                     feishu_service.update_record_status(
                         record.record_id,
                         content_status=settings.FEISHU_STATUS_PROCESSING,
+                        publish_status="processing",
                         last_error="",
                     )
 
                 draft = writer.write(record)
+                print(f"[{feishu_service.source_mode}] WriterAgent completed")
+
                 review = review_agent.review(draft)
+                print(f"[{feishu_service.source_mode}] ReviewAgent status={review.status}")
+
                 html = formatter.to_html(draft, review)
-                publish_result = publisher.publish(
-                    draft,
-                    review,
-                    html=html,
-                    confirm_publish=workflow_options.confirm_publish,
-                    source_url=record.source_url,
-                )
+                print(f"[{feishu_service.source_mode}] FormatterAgent completed")
+
+                if review.status == "needs_manual_check":
+                    publish_result: dict[str, object] = {
+                        "mode": "blocked",
+                        "status": "needs_manual_check",
+                        "draft_id": "",
+                        "publish_id": "",
+                        "publish_url": "",
+                        "title": draft.title,
+                        "review_status": review.status,
+                        "note": "Publish terminated: ReviewAgent requires manual check.",
+                    }
+                else:
+                    publish_result = publisher.publish(
+                        draft,
+                        review,
+                        html=html,
+                        confirm_publish=workflow_options.confirm_publish,
+                        source_url=record.source_url,
+                    )
 
                 file_stem = "mock_output" if feishu_service.source_mode == "mock" and index == 1 else f"{record.record_id}_output"
                 output_paths = output_service.save_outputs(DRAFTS_DIR, file_stem, draft, review, html, publish_result)
+
+                draft_id = str(publish_result.get("draft_id", ""))
+                publish_id = str(publish_result.get("publish_id", ""))
+                final_draft_or_publish_id = publish_id or draft_id
+                publish_url = str(publish_result.get("publish_url", ""))
+                publish_status = str(publish_result.get("status", ""))
 
                 if feishu_service.source_mode == "real":
                     feishu_service.update_record_status(
                         record.record_id,
                         content_status=settings.FEISHU_STATUS_GENERATED,
                         review_status=review.status,
-                        draft_id=str(publish_result.get("draft_id", "")),
+                        draft_id=final_draft_or_publish_id,
+                        publish_status=publish_status,
+                        publish_id=final_draft_or_publish_id,
+                        publish_url=publish_url,
                         summary=draft.summary,
                         content_markdown=draft.markdown,
                         cover_prompt=draft.cover_todo,
@@ -86,18 +120,15 @@ class WorkflowService:
                         last_error="",
                     )
 
-                print(f"[{feishu_service.source_mode}] Feishu record loaded:", record.record_id)
-                print(f"[{feishu_service.source_mode}] WriterAgent -> LLMService completed")
-                print(f"[{feishu_service.source_mode}] ReviewAgent status:", review.status)
-                print(f"[{feishu_service.source_mode}] FormatterAgent wrote HTML to:", output_paths["html"])
-                print(f"[{feishu_service.source_mode}] PublisherAgent result:", publish_result["status"], publish_result["draft_id"])
+                print(f"[{feishu_service.source_mode}] PublisherAgent result status={publish_status} id={final_draft_or_publish_id}")
+                print(f"[{feishu_service.source_mode}] Backups saved markdown={output_paths['markdown']} html={output_paths['html']}")
 
                 results.append(
                     WorkflowRecordResult(
                         record_id=record.record_id,
                         review_status=review.status,
-                        publish_status=str(publish_result.get("status", "")),
-                        draft_id=str(publish_result.get("draft_id", "")),
+                        publish_status=publish_status,
+                        draft_id=final_draft_or_publish_id,
                         output_html=output_paths["html"],
                         output_markdown=output_paths["markdown"],
                         source_mode=feishu_service.source_mode,
@@ -111,6 +142,7 @@ class WorkflowService:
                         feishu_service.update_record_status(
                             record.record_id,
                             content_status=settings.FEISHU_STATUS_FAILED,
+                            publish_status="failed",
                             last_error=str(error),
                         )
                     except Exception as update_error:

@@ -3,19 +3,21 @@ from __future__ import annotations
 from typing import Any
 
 from models.article import DraftDocument, ReviewDecision
-from services.wechat_publisher_service import WechatPublisherService
+from services.wechat_mp_service import WechatMPService
 from utils.time_utils import now_iso
 
 
 class PublisherAgent:
-    def __init__(self, wechat_publisher_service: WechatPublisherService | None = None):
-        self._wechat_publisher_service = wechat_publisher_service or WechatPublisherService()
+    def __init__(self, wechat_mp_service: WechatMPService | None = None):
+        self._wechat_mp_service = wechat_mp_service or WechatMPService()
 
     def publish_dry_run(self, draft: DraftDocument, review: ReviewDecision) -> dict[str, Any]:
         return {
             "mode": "dry_run",
             "status": "draft_created",
             "draft_id": "mock-draft-001",
+            "publish_id": "",
+            "publish_url": "",
             "title": draft.title,
             "review_status": review.status,
             "cover": draft.cover_todo,
@@ -39,6 +41,8 @@ class PublisherAgent:
                 "mode": "blocked",
                 "status": "review_blocked",
                 "draft_id": "",
+                "publish_id": "",
+                "publish_url": "",
                 "title": draft.title,
                 "review_status": review.status,
                 "cover": draft.cover_todo,
@@ -46,7 +50,7 @@ class PublisherAgent:
                 "note": "Real publish is blocked until the review status is approved.",
             }
 
-        return self._wechat_publisher_service.publish_article(
+        return self._wechat_mp_service.publish_article(
             draft=draft,
             html=html,
             review=review,
