@@ -1,25 +1,86 @@
 # wechat-article-agent
 
-Minimal local skeleton for generating WeChat article drafts with a fully offline mock pipeline.
+Minimal local skeleton for an automated WeChat article pipeline.
+
+This repository is currently focused on an offline mock workflow so the full content chain can be verified before any real Feishu or WeChat integration is added.
+
+## Goal
+
+The long-term target is a full article automation flow:
+
+1. Read article tasks from Feishu tables.
+2. Generate article drafts with an LLM.
+3. Convert markdown into publishable HTML.
+4. Review article quality automatically.
+5. Prepare WeChat draft publishing results.
+6. Later add real publish queue handling and publish status sync.
 
 ## Current Status
 
-This project is currently in mock mode only.
+What is already working:
 
-- `run_generate_draft.py` uses a local mock Feishu record.
-- `WriterAgent`, `LLMService`, `ReviewAgent`, `FormatterAgent`, and `PublisherAgent` all run locally.
-- No real WeChat API or Feishu API calls are made.
-- Publish and sync flows are dry-run placeholders.
+- local mock draft generation
+- markdown output
+- HTML output
+- review result output
+- publisher dry-run output
+- placeholder publish queue script
+- placeholder publish status sync script
 
-## Project Layout
+What is not implemented yet:
 
-- `mock_pipeline.py`: local mock pipeline and HTML formatting logic
-- `tasks/run_generate_draft.py`: generate mock markdown, HTML, review JSON, and publish dry-run JSON
-- `tasks/run_publish_queue.py`: publish queue placeholder
-- `tasks/run_sync_status.py`: publish status sync placeholder
-- `data/drafts/`: generated mock outputs
+- real Feishu data loading
+- real WeChat API publishing
+- real publish status sync
+- cover generation beyond a TODO placeholder
+- Codex CLI or API-backed article generation
 
-## Python Note
+## Repository Layout
+
+This repository is intentionally small right now:
+
+- `mock_pipeline.py`
+  - local mock record model
+  - `LLMService`
+  - `WriterAgent`
+  - `ReviewAgent`
+  - `FormatterAgent`
+  - `PublisherAgent`
+- `tasks/run_generate_draft.py`
+  - runs the end-to-end mock draft flow
+- `tasks/run_publish_queue.py`
+  - placeholder publish queue entrypoint
+- `tasks/run_sync_status.py`
+  - placeholder status sync entrypoint
+- `data/drafts/`
+  - generated mock outputs
+
+## Mock Flow
+
+```text
+Mock Feishu record
+    ->
+WriterAgent + LLMService
+    ->
+Markdown draft
+    ->
+FormatterAgent
+    ->
+HTML
+    ->
+ReviewAgent
+    ->
+approved / needs_manual_check
+    ->
+PublisherAgent dry_run
+    ->
+mock_output.md
+mock_output.html
+mock_review.json
+mock_publish_result.json
+```
+
+## Python Environment Note
 
 The system default `python` on this machine is currently unreliable and may fail with:
 
@@ -27,7 +88,7 @@ The system default `python` on this machine is currently unreliable and may fail
 No module named 'encodings'
 ```
 
-Use this temporary interpreter instead:
+Use this temporary interpreter for local testing:
 
 ```powershell
 C:\Users\Administrator\AppData\Local\Temp\python-3.11.5-embed\runtime\python.exe
@@ -35,13 +96,13 @@ C:\Users\Administrator\AppData\Local\Temp\python-3.11.5-embed\runtime\python.exe
 
 ## Run The Mock Smoke Test
 
-From the project root:
+Open a terminal in the repository root, then run:
 
 ```powershell
-Set-Location 'D:\Administrator\Documents\电脑b\ai视频\手机号\可视化龙虾\wechat-article-agent'
+Get-Location
 ```
 
-Generate the draft and output files:
+Generate the full mock draft flow:
 
 ```powershell
 & 'C:\Users\Administrator\AppData\Local\Temp\python-3.11.5-embed\runtime\python.exe' `
@@ -55,7 +116,7 @@ Run the publish queue placeholder:
   '.\tasks\run_publish_queue.py'
 ```
 
-Run the status sync placeholder:
+Run the publish status sync placeholder:
 
 ```powershell
 & 'C:\Users\Administrator\AppData\Local\Temp\python-3.11.5-embed\runtime\python.exe' `
@@ -64,26 +125,45 @@ Run the status sync placeholder:
 
 ## Expected Outputs
 
-After running `run_generate_draft.py`, these files should appear in `data/drafts/`:
+After running `run_generate_draft.py`, these files should exist in `data/drafts/`:
 
 - `mock_output.md`
 - `mock_output.html`
 - `mock_review.json`
 - `mock_publish_result.json`
 
-## What The Mock Flow Verifies
+These outputs confirm:
 
 - mock record ingestion works
-- writer flow calls the local `LLMService` skeleton
-- review result is produced as `approved` or `needs_manual_check`
-- markdown is converted into HTML
-- publish flow returns a dry-run payload instead of sending anything externally
+- the writer flow runs locally
+- markdown conversion works
+- review status is produced
+- publish preparation is simulated without any real API call
+
+## Git Status
+
+This repository has already been initialized and pushed:
+
+- branch: `main`
+- initial commit: `4fcdcec init wechat-article-agent mock skeleton`
+- remote: `https://github.com/munikatudu2003-oss/wechat-article-agent.git`
+
+## Risks And Current Limits
+
+- the default Python installation on this machine is not stable yet
+- all publishing is still dry-run only
+- there is no real Feishu reader yet
+- there is no real WeChat draft creation yet
+- the current repository is a minimal skeleton, not a full production implementation
 
 ## Next Steps
 
-- replace the mock Feishu record with real upstream data loading
-- swap the local `LLMService` skeleton for a real Codex CLI or API-backed generator
-- add a real markdown service if richer formatting is needed
-- implement real publish queue handling
-- implement real publish status sync
-- repair the system Python installation so `python ...` works without the temporary interpreter
+Recommended order:
+
+1. Repair the default Python environment.
+2. Replace the mock record with real Feishu task loading.
+3. Swap the local `LLMService` skeleton for a real content generator.
+4. Add a richer markdown/HTML formatting layer if needed.
+5. Implement real WeChat draft publishing.
+6. Implement real publish queue and publish status sync.
+7. Expand the repository into clearer modules such as `agents/`, `services/`, `utils/`, and `config/` when the real integrations begin.
