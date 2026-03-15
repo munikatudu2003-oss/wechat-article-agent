@@ -234,3 +234,42 @@ Recommended order:
 5. Add a richer markdown and HTML formatting layer if needed.
 6. Implement real publish queue and publish status sync.
 7. Add a real cover generation step when the publish interface is ready.
+
+## One-Click Publish (v1)
+
+新增一键执行入口：
+
+```powershell
+& 'C:\Users\Administrator\AppData\Local\Temp\python-3.11.5-embed\runtime\python.exe' `
+  '.\tasks\run_one_click_publish.py' `
+  --mode mock --limit 1 --confirm-publish false
+```
+
+参数说明：
+
+- `--mode mock|real`
+- `--limit 1`
+- `--confirm-publish true|false`（默认 `false`，安全 dry-run）
+
+执行链路固定为：
+
+- `WriterAgent -> FormatterAgent -> ReviewAgent -> PublisherAgent`
+
+行为说明：
+
+1. `confirm_publish=false`：只执行 dry-run，生成本地 markdown/html/review/publish JSON 备份，不调用真实公众号发布。
+2. `confirm_publish=true`：只有当 `ReviewAgent` 返回 `approved` 才继续调用公众号发布逻辑。
+3. 当 `ReviewAgent` 返回 `needs_manual_check`：终止发布并回写 Feishu 状态。
+4. real 模式下会回写 Feishu 字段：`publish_status`、`review_status`、`draft_id/publish_id`、`publish_url`（若可用）。
+
+真实发布示例：
+
+```powershell
+$env:FEISHU_SOURCE_MODE='real'
+$env:WECHAT_PUBLISH_MODE='real'
+& 'C:\Users\Administrator\AppData\Local\Temp\python-3.11.5-embed\runtime\python.exe' `
+  '.\tasks\run_one_click_publish.py' `
+  --mode real --limit 1 --confirm-publish true
+```
+
+> 说明：当前版本 `publish_url` 仍依赖微信异步发布查询接口，代码中保留了 TODO。

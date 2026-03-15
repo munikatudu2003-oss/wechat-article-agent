@@ -74,6 +74,9 @@ class FeishuService:
         content_status: str | None = None,
         review_status: str | None = None,
         draft_id: str | None = None,
+        publish_status: str | None = None,
+        publish_id: str | None = None,
+        publish_url: str | None = None,
         summary: str | None = None,
         content_markdown: str | None = None,
         cover_prompt: str | None = None,
@@ -88,6 +91,12 @@ class FeishuService:
             fields[settings.FEISHU_FIELD_REVIEW_STATUS] = review_status
         if draft_id is not None:
             fields[settings.FEISHU_FIELD_DRAFT_ID] = draft_id
+        if publish_status is not None:
+            fields[settings.FEISHU_FIELD_PUBLISH_STATUS] = publish_status
+        if publish_id is not None:
+            fields[settings.FEISHU_FIELD_PUBLISH_ID] = publish_id
+        if publish_url is not None:
+            fields[settings.FEISHU_FIELD_PUBLISH_URL] = publish_url
         if summary is not None:
             fields[settings.FEISHU_FIELD_SUMMARY] = summary
         if content_markdown is not None:
@@ -217,6 +226,7 @@ class FeishuService:
         category = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_CATEGORY))
         keywords = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_KEYWORDS))
         reference = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_REFERENCE))
+        source_url = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_SOURCE_URL))
         word_count = self._coerce_to_int(fields.get(settings.FEISHU_FIELD_WORD_COUNT))
         content_markdown = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_CONTENT_MARKDOWN))
         cover_prompt = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_COVER_PROMPT))
@@ -238,7 +248,7 @@ class FeishuService:
             content_markdown=content_markdown,
             cover_prompt=cover_prompt,
             cover_path=cover_path,
-            source_url=f"feishu://bitable/{record_id}",
+            source_url=source_url or f"feishu://bitable/{record_id}",
             content_status=content_status,
         )
 
@@ -253,10 +263,14 @@ class FeishuService:
             parts = [self._coerce_to_text(item) for item in value]
             return ", ".join(part for part in parts if part)
         if isinstance(value, dict):
-            for key in ("text", "name", "value"):
+            for key in ("text", "name", "value", "link", "url", "email"):
                 text = self._coerce_to_text(value.get(key))
                 if text:
                     return text
+            if isinstance(value.get("text"), dict):
+                nested = self._coerce_to_text(value.get("text"))
+                if nested:
+                    return nested
             return json.dumps(value, ensure_ascii=False)
         return str(value).strip()
 
