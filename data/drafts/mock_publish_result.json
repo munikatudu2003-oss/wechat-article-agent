@@ -1,0 +1,9 @@
+{
+  "mode": "dry_run",
+  "status": "draft_created",
+  "draft_id": "mock-draft-001",
+  "title": "Turning a Feishu note into a WeChat article draft",
+  "review_status": "approved",
+  "cover": "TODO: add cover asset before real publish",
+  "published_at": "2026-03-15T12:30:14.379909+00:00"
+}
