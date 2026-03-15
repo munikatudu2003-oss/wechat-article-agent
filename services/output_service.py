@@ -1,0 +1,36 @@
+from __future__ import annotations
+
+from dataclasses import asdict
+import json
+from pathlib import Path
+
+from models.article import DraftDocument, ReviewDecision
+
+
+class OutputService:
+    def save_mock_outputs(
+        self,
+        base_dir: Path,
+        draft: DraftDocument,
+        review: ReviewDecision,
+        html: str,
+        publish_result: dict[str, object],
+    ) -> dict[str, Path]:
+        base_dir.mkdir(parents=True, exist_ok=True)
+
+        markdown_path = base_dir / "mock_output.md"
+        html_path = base_dir / "mock_output.html"
+        publish_path = base_dir / "mock_publish_result.json"
+        review_path = base_dir / "mock_review.json"
+
+        markdown_path.write_text(draft.markdown, encoding="utf-8")
+        html_path.write_text(html, encoding="utf-8")
+        publish_path.write_text(json.dumps(publish_result, indent=2), encoding="utf-8")
+        review_path.write_text(json.dumps(asdict(review), indent=2), encoding="utf-8")
+
+        return {
+            "markdown": markdown_path,
+            "html": html_path,
+            "publish": publish_path,
+            "review": review_path,
+        }

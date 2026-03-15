@@ -1,17 +1,17 @@
-# Turning a Feishu note into a WeChat article draft
+# Real mode Feishu record title
 
 ## Summary
-This mock draft shows the full offline pipeline from a local record through review, formatting, and a dry-run publish result.
+This record was loaded through the real-mode Feishu skeleton against a local fake API.
 
 ## Key Points
-- WriterAgent asks the local LLMService skeleton for a first draft.
-- ReviewAgent marks the draft as approved unless it is too short.
-- FormatterAgent converts markdown into a readable HTML article.
-- PublisherAgent returns a dry-run payload instead of calling a real API.
+- Category: Automation
+- Keywords: feishu, bitable, real-mode
+- Reference: Local fake Feishu server
+- Target word count: 800
 
 ## Suggested Structure
 Start with the business context, then explain the workflow, and end with a practical next step.
 
 ## Source
-- Feishu mock record: mock-record-001
-- Reference link: mock://feishu/article-record/001
+- Feishu mock record: rec-real-001
+- Reference link: feishu://bitable/rec-real-001

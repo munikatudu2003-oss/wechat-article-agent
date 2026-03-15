@@ -24,12 +24,13 @@ What is already working:
 - HTML output
 - review result output
 - publisher dry-run output
+- switchable `FeishuService` entrypoint with `mock` and `real` modes
 - placeholder publish queue script
 - placeholder publish status sync script
 
 What is not implemented yet:
 
-- real Feishu data loading
+- fully validated live Feishu field mapping against your production table
 - real WeChat API publishing
 - real publish status sync
 - cover generation beyond a TODO placeholder
@@ -37,15 +38,24 @@ What is not implemented yet:
 
 ## Repository Layout
 
-This repository is intentionally small right now:
+This repository is intentionally small right now, but the code is now split into clearer modules:
 
-- `mock_pipeline.py`
-  - local mock record model
-  - `LLMService`
+- `agents/`
   - `WriterAgent`
   - `ReviewAgent`
   - `FormatterAgent`
   - `PublisherAgent`
+- `services/`
+  - `FeishuService`
+  - `LLMService`
+  - `MarkdownService`
+  - `OutputService`
+- `models/`
+  - shared dataclasses for records, drafts, and review results
+- `utils/`
+  - small helpers such as time formatting
+- `config/`
+  - project paths and constants
 - `tasks/run_generate_draft.py`
   - runs the end-to-end mock draft flow
 - `tasks/run_publish_queue.py`
@@ -54,6 +64,8 @@ This repository is intentionally small right now:
   - placeholder status sync entrypoint
 - `data/drafts/`
   - generated mock outputs
+- `.env.example`
+  - example environment variables for Feishu mode switching
 
 ## Mock Flow
 
@@ -109,6 +121,46 @@ Generate the full mock draft flow:
   '.\tasks\run_generate_draft.py'
 ```
 
+## Switch Feishu Between Mock And Real Mode
+
+By default, `run_generate_draft.py` uses:
+
+```powershell
+$env:FEISHU_SOURCE_MODE='mock'
+```
+
+To prepare for real Feishu table reads, set:
+
+```powershell
+$env:FEISHU_SOURCE_MODE='real'
+$env:FEISHU_APP_ID='your_app_id'
+$env:FEISHU_APP_SECRET='your_app_secret'
+$env:FEISHU_APP_TOKEN='your_bitable_app_token'
+$env:FEISHU_TABLE_ID='your_table_id'
+```
+
+Optional settings:
+
+```powershell
+$env:FEISHU_VIEW_ID='your_view_id'
+$env:FEISHU_PAGE_SIZE='1'
+$env:FEISHU_FIELD_TITLE='文章标题'
+$env:FEISHU_FIELD_SUMMARY='摘要'
+$env:FEISHU_FIELD_CATEGORY='栏目类型'
+$env:FEISHU_FIELD_KEYWORDS='关键词'
+$env:FEISHU_FIELD_REFERENCE='参考素材'
+$env:FEISHU_FIELD_WORD_COUNT='目标字数'
+```
+
+Replace those field names with the real column names from your Feishu table.
+
+In `real` mode, the service now:
+
+- requests a tenant access token
+- fetches the first record from the configured bitable table
+- maps configured field names into the existing draft model
+- keeps the rest of the pipeline unchanged
+
 Run the publish queue placeholder:
 
 ```powershell
@@ -152,7 +204,7 @@ This repository has already been initialized and pushed:
 
 - the default Python installation on this machine is not stable yet
 - all publishing is still dry-run only
-- there is no real Feishu reader yet
+- real Feishu mode still needs your actual credentials and table schema
 - there is no real WeChat draft creation yet
 - the current repository is a minimal skeleton, not a full production implementation
 
@@ -161,9 +213,9 @@ This repository has already been initialized and pushed:
 Recommended order:
 
 1. Repair the default Python environment.
-2. Replace the mock record with real Feishu task loading.
+2. Validate `real` Feishu mode against your actual bitable schema.
 3. Swap the local `LLMService` skeleton for a real content generator.
 4. Add a richer markdown/HTML formatting layer if needed.
 5. Implement real WeChat draft publishing.
 6. Implement real publish queue and publish status sync.
-7. Expand the repository into clearer modules such as `agents/`, `services/`, `utils/`, and `config/` when the real integrations begin.
+7. Add a real cover generation step when the publish interface is ready.

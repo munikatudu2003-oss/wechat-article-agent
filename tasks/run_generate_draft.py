@@ -8,34 +8,33 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from mock_pipeline import (  # noqa: E402
-    FormatterAgent,
-    LLMService,
-    PublisherAgent,
-    ReviewAgent,
-    WriterAgent,
-    build_mock_record,
-    save_mock_outputs,
-)
+from agents import FormatterAgent, PublisherAgent, ReviewAgent, WriterAgent  # noqa: E402
+from config.settings import DRAFTS_DIR  # noqa: E402
+from services import FeishuService, LLMService, MarkdownService, OutputService  # noqa: E402
 
 
 def main() -> int:
-    output_dir = PROJECT_ROOT / "data" / "drafts"
-    mock_record = build_mock_record()
+    feishu_service = FeishuService()
+    try:
+        record = feishu_service.get_record()
+    except Exception as error:
+        print(f"[error] FeishuService ({feishu_service.source_mode}) failed: {error}", file=sys.stderr)
+        return 1
 
     llm_service = LLMService()
     writer = WriterAgent(llm_service)
     review_agent = ReviewAgent()
-    formatter = FormatterAgent()
+    formatter = FormatterAgent(MarkdownService())
     publisher = PublisherAgent()
+    output_service = OutputService()
 
-    draft = writer.write(mock_record)
+    draft = writer.write(record)
     review = review_agent.review(draft)
     html = formatter.to_html(draft, review)
     publish_result = publisher.publish_dry_run(draft, review)
-    output_paths = save_mock_outputs(output_dir, draft, review, html, publish_result)
+    output_paths = output_service.save_mock_outputs(DRAFTS_DIR, draft, review, html, publish_result)
 
-    print("[mock] Feishu record loaded:", mock_record.record_id)
+    print(f"[{feishu_service.source_mode}] Feishu record loaded:", record.record_id)
     print("[mock] WriterAgent -> LLMService skeleton completed")
     print("[mock] ReviewAgent status:", review.status)
     print("[mock] FormatterAgent wrote HTML to:", output_paths["html"])
