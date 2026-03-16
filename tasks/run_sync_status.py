@@ -50,6 +50,7 @@ def main() -> int:
 
             feishu_service.update_record_status(
                 record.record_id,
+                content_status=str(normalized["content_status"]),
                 publish_status=str(normalized["publish_status"]),
                 publish_id=str(normalized["publish_id"]) or record.publish_id,
                 publish_url=publish_url or record.publish_url,
@@ -60,7 +61,8 @@ def main() -> int:
             print(
                 f"[sync-status] record={record.record_id} "
                 f"publish_id={record.publish_id} status={normalized['publish_status']} "
-                f"url={'yes' if publish_url else 'no'}"
+                f"status_code={normalized['publish_status_code']} article_id={normalized['article_id'] or '-'} "
+                f"url={publish_url or '-'}"
             )
         except Exception as error:
             failed += 1

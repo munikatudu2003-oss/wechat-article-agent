@@ -114,14 +114,14 @@ class FeishuService:
             fields = record.get("fields")
             if not isinstance(fields, dict):
                 continue
-            title = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_TITLE))
-            if not title:
-                title = self._coerce_to_text(fields.get("title"))
+            title = self._coerce_to_text(
+                self._get_field_value(fields, settings.FEISHU_FIELD_TITLE, aliases=("title", "Title"))
+            )
             if not title:
                 # Empty starter rows are common in fresh bitables; skip them.
                 continue
 
-            content_status = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_CONTENT_STATUS))
+            content_status = self._coerce_to_text(self._get_field_value(fields, settings.FEISHU_FIELD_CONTENT_STATUS))
             if normalized_statuses and content_status not in normalized_statuses:
                 continue
 
@@ -343,28 +343,28 @@ class FeishuService:
         return data
 
     def _map_record_fields(self, record: dict[str, Any], fields: dict[str, Any]) -> ArticleTask:
-        title = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_TITLE))
-        if not title:
-            title = self._coerce_to_text(fields.get("title"))
+        title = self._coerce_to_text(
+            self._get_field_value(fields, settings.FEISHU_FIELD_TITLE, aliases=("title", "Title"))
+        )
         if not title:
             raise ValueError("Could not map a title field from the Feishu record.")
 
-        summary = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_SUMMARY))
-        category = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_CATEGORY))
-        keywords = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_KEYWORDS))
-        reference = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_REFERENCE))
-        source_url = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_SOURCE_URL))
-        word_count = self._coerce_to_int(fields.get(settings.FEISHU_FIELD_WORD_COUNT))
-        content_markdown = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_CONTENT_MARKDOWN))
-        cover_prompt = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_COVER_PROMPT))
-        cover_path = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_COVER_PATH))
-        content_status = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_CONTENT_STATUS))
-        review_status = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_REVIEW_STATUS))
-        draft_id = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_DRAFT_ID))
-        publish_status = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_PUBLISH_STATUS))
-        publish_id = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_PUBLISH_ID))
-        publish_url = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_PUBLISH_URL))
-        last_error = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_LAST_ERROR))
+        summary = self._coerce_to_text(self._get_field_value(fields, settings.FEISHU_FIELD_SUMMARY))
+        category = self._coerce_to_text(self._get_field_value(fields, settings.FEISHU_FIELD_CATEGORY))
+        keywords = self._coerce_to_text(self._get_field_value(fields, settings.FEISHU_FIELD_KEYWORDS))
+        reference = self._coerce_to_text(self._get_field_value(fields, settings.FEISHU_FIELD_REFERENCE))
+        source_url = self._coerce_to_text(self._get_field_value(fields, settings.FEISHU_FIELD_SOURCE_URL))
+        word_count = self._coerce_to_int(self._get_field_value(fields, settings.FEISHU_FIELD_WORD_COUNT))
+        content_markdown = self._coerce_to_text(self._get_field_value(fields, settings.FEISHU_FIELD_CONTENT_MARKDOWN))
+        cover_prompt = self._coerce_to_text(self._get_field_value(fields, settings.FEISHU_FIELD_COVER_PROMPT))
+        cover_path = self._coerce_to_text(self._get_field_value(fields, settings.FEISHU_FIELD_COVER_PATH))
+        content_status = self._coerce_to_text(self._get_field_value(fields, settings.FEISHU_FIELD_CONTENT_STATUS))
+        review_status = self._coerce_to_text(self._get_field_value(fields, settings.FEISHU_FIELD_REVIEW_STATUS))
+        draft_id = self._coerce_to_text(self._get_field_value(fields, settings.FEISHU_FIELD_DRAFT_ID))
+        publish_status = self._coerce_to_text(self._get_field_value(fields, settings.FEISHU_FIELD_PUBLISH_STATUS))
+        publish_id = self._coerce_to_text(self._get_field_value(fields, settings.FEISHU_FIELD_PUBLISH_ID))
+        publish_url = self._coerce_to_text(self._get_field_value(fields, settings.FEISHU_FIELD_PUBLISH_URL))
+        last_error = self._coerce_to_text(self._get_field_value(fields, settings.FEISHU_FIELD_LAST_ERROR))
 
         if not summary:
             summary = "Imported from a live Feishu record. Review the mapped fields before using this draft for real publishing."
@@ -421,3 +421,28 @@ class FeishuService:
             return int(float(text))
         except ValueError:
             return None
+
+    def _get_field_value(self, fields: dict[str, Any], configured_name: str, aliases: tuple[str, ...] = ()) -> Any:
+        candidates = [configured_name, *aliases]
+        for candidate in candidates:
+            if candidate and candidate in fields:
+                return fields[candidate]
+
+        lowered = {str(key).strip().lower(): key for key in fields.keys()}
+        for candidate in candidates:
+            if not candidate:
+                continue
+            matched_key = lowered.get(candidate.strip().lower())
+            if matched_key is not None:
+                return fields[matched_key]
+
+        for candidate in candidates:
+            token = candidate.strip()
+            if not token:
+                continue
+            for key in fields.keys():
+                key_text = str(key).strip()
+                if key_text.endswith(token):
+                    return fields[key]
+
+        return None

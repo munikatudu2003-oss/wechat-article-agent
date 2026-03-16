@@ -110,19 +110,19 @@ class WorkflowService:
 
                 draft_id = str(publish_result.get("draft_id", ""))
                 publish_id = str(publish_result.get("publish_id", ""))
-                final_draft_or_publish_id = publish_id or draft_id
                 publish_url = str(publish_result.get("publish_url", ""))
                 publish_status = str(publish_result.get("status", ""))
+                content_status = str(publish_result.get("content_status", "")) or settings.FEISHU_STATUS_GENERATED
 
                 if feishu_service.source_mode == "real":
                     self._try_update_record_status(
                         feishu_service,
                         record.record_id,
-                        content_status=settings.FEISHU_STATUS_GENERATED,
+                        content_status=content_status,
                         review_status=review.status,
-                        draft_id=final_draft_or_publish_id,
+                        draft_id=draft_id,
                         publish_status=publish_status,
-                        publish_id=final_draft_or_publish_id,
+                        publish_id=publish_id,
                         publish_url=publish_url,
                         summary=draft.summary,
                         content_markdown=draft.markdown,
@@ -131,7 +131,10 @@ class WorkflowService:
                         last_error="",
                     )
 
-                print(f"[{feishu_service.source_mode}] PublisherAgent result status={publish_status} id={final_draft_or_publish_id}")
+                print(
+                    f"[{feishu_service.source_mode}] PublisherAgent result "
+                    f"status={publish_status} draft_id={draft_id or '-'} publish_id={publish_id or '-'}"
+                )
                 print(f"[{feishu_service.source_mode}] Backups saved markdown={output_paths['markdown']} html={output_paths['html']}")
 
                 results.append(
@@ -139,7 +142,7 @@ class WorkflowService:
                         record_id=record.record_id,
                         review_status=review.status,
                         publish_status=publish_status,
-                        draft_id=final_draft_or_publish_id,
+                        draft_id=draft_id or publish_id,
                         output_html=output_paths["html"],
                         output_markdown=output_paths["markdown"],
                         source_mode=feishu_service.source_mode,

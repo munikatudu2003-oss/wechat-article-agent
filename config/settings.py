@@ -64,6 +64,9 @@ FEISHU_FIELD_PROCESSED_AT = os.getenv("FEISHU_FIELD_PROCESSED_AT", "ProcessedAt"
 FEISHU_STATUS_PENDING = os.getenv("FEISHU_STATUS_PENDING", "pending").strip()
 FEISHU_STATUS_PROCESSING = os.getenv("FEISHU_STATUS_PROCESSING", "processing").strip()
 FEISHU_STATUS_GENERATED = os.getenv("FEISHU_STATUS_GENERATED", "generated").strip()
+FEISHU_STATUS_PUBLISHING = os.getenv("FEISHU_STATUS_PUBLISHING", "publishing").strip()
+FEISHU_STATUS_PUBLISHED = os.getenv("FEISHU_STATUS_PUBLISHED", "published").strip()
+FEISHU_STATUS_PUBLISH_FAILED = os.getenv("FEISHU_STATUS_PUBLISH_FAILED", "publish_failed").strip()
 FEISHU_STATUS_FAILED = os.getenv("FEISHU_STATUS_FAILED", "failed").strip()
 
 WECHAT_PUBLISH_MODE = os.getenv("WECHAT_PUBLISH_MODE", "dry_run").strip().lower() or "dry_run"

@@ -13,6 +13,24 @@ class WechatMPService:
     def __init__(self) -> None:
         self._access_token = settings.WECHAT_ACCESS_TOKEN or None
 
+    def validate_real_draft_requirements(self) -> None:
+        missing: list[str] = []
+        if not settings.WECHAT_ACCESS_TOKEN:
+            if not settings.WECHAT_APP_ID:
+                missing.append("WECHAT_APP_ID")
+            if not settings.WECHAT_APP_SECRET:
+                missing.append("WECHAT_APP_SECRET")
+        if not settings.WECHAT_THUMB_MEDIA_ID:
+            missing.append("WECHAT_THUMB_MEDIA_ID")
+
+        if missing:
+            missing_text = ", ".join(missing)
+            raise ValueError(
+                "Real WeChat draft/add requires these environment variables: "
+                f"{missing_text}. "
+                "You can provide WECHAT_ACCESS_TOKEN directly, or WECHAT_APP_ID + WECHAT_APP_SECRET."
+            )
+
     def publish_article(
         self,
         *,
@@ -46,6 +64,7 @@ class WechatMPService:
         result: dict[str, Any] = {
             "mode": "real",
             "status": "draft_created",
+            "content_status": settings.FEISHU_STATUS_GENERATED,
             "draft_id": media_id,
             "publish_id": "",
             "publish_url": "",
@@ -58,6 +77,7 @@ class WechatMPService:
         if settings.WECHAT_AUTO_SUBMIT_PUBLISH:
             publish_response = self.submit_publish(media_id, access_token=token)
             result["status"] = "publish_submitted"
+            result["content_status"] = settings.FEISHU_STATUS_PUBLISHING
             result["publish_id"] = str(publish_response.get("publish_id", ""))
             # TODO: Free publish APIs are async; if needed, call get API later to resolve a final article URL.
 
@@ -71,6 +91,7 @@ class WechatMPService:
         source_url: str,
         access_token: str | None = None,
     ) -> str:
+        self.validate_real_draft_requirements()
         token = access_token or self._get_access_token()
         return self._add_draft(token, draft, html, source_url)
 
@@ -143,6 +164,7 @@ class WechatMPService:
             "publish_id": publish_id,
             "publish_status_code": code,
             "publish_status": status,
+            "content_status": self._map_content_status(code),
             "article_id": article_id,
             "publish_url": publish_url,
             "last_error": last_error,
@@ -273,3 +295,12 @@ class WechatMPService:
             return int(text)
         except ValueError:
             return None
+
+    def _map_content_status(self, publish_status_code: int | None) -> str:
+        if publish_status_code == 0:
+            return settings.FEISHU_STATUS_PUBLISHED
+        if publish_status_code == 1:
+            return settings.FEISHU_STATUS_PUBLISHING
+        if publish_status_code in {2, 3, 4, 5, 6}:
+            return settings.FEISHU_STATUS_PUBLISH_FAILED
+        return settings.FEISHU_STATUS_PUBLISHING

@@ -11,6 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from agents.formatter_agent import FormatterAgent  # noqa: E402
 from agents.review_agent import ReviewAgent  # noqa: E402
+from config import settings  # noqa: E402
 from config.settings import COVER_TODO_TEXT  # noqa: E402
 from models.article import DraftDocument, ReviewDecision  # noqa: E402
 from services.feishu_service import FeishuService  # noqa: E402
@@ -73,6 +74,7 @@ def main() -> int:
             if feishu_service.source_mode == "real":
                 feishu_service.update_record_status(
                     record.record_id,
+                    content_status=settings.FEISHU_STATUS_FAILED,
                     publish_status="review_blocked",
                     last_error=f"Review status is {review.status}",
                 )
@@ -92,24 +94,47 @@ def main() -> int:
                 print(f"[publish-queue] mock publish simulated record={record.record_id}")
                 continue
 
-            if record.draft_id and not record.draft_id.startswith("mock-"):
-                publish_response = wechat_service.submit_publish(record.draft_id)
-                draft_id = record.draft_id
-            else:
+            draft_id = record.draft_id if record.draft_id and not record.draft_id.startswith("mock-") else ""
+            if not draft_id:
                 draft_id = wechat_service.create_draft(
                     draft=draft,
                     html=html,
                     source_url=record.source_url,
                 )
-                publish_response = wechat_service.submit_publish(draft_id)
+                print(f"[publish-queue] draft/add ok record={record.record_id} draft_id={draft_id}")
+                feishu_service.update_record_status(
+                    record.record_id,
+                    content_status=settings.FEISHU_STATUS_GENERATED,
+                    review_status=review.status,
+                    draft_id=draft_id,
+                    publish_status="draft_created",
+                    publish_id="",
+                    summary=draft.summary,
+                    content_markdown=draft.markdown,
+                    cover_prompt=draft.cover_todo,
+                    cover_path=record.cover_path,
+                    last_error="",
+                )
 
+            if not confirm_publish or not settings.WECHAT_AUTO_SUBMIT_PUBLISH:
+                processed += 1
+                print(
+                    f"[publish-queue] draft ready record={record.record_id} "
+                    f"draft_id={draft_id} auto_submit={settings.WECHAT_AUTO_SUBMIT_PUBLISH}"
+                )
+                continue
+
+            publish_response = wechat_service.submit_publish(draft_id)
             publish_id = str(publish_response.get("publish_id", ""))
+            msg_data_id = str(publish_response.get("msg_data_id", ""))
             feishu_service.update_record_status(
                 record.record_id,
+                content_status=settings.FEISHU_STATUS_PUBLISHING,
                 review_status=review.status,
                 draft_id=draft_id,
                 publish_status="publish_submitted",
                 publish_id=publish_id,
+                publish_url="",
                 summary=draft.summary,
                 content_markdown=draft.markdown,
                 cover_prompt=draft.cover_todo,
@@ -118,8 +143,8 @@ def main() -> int:
             )
             processed += 1
             print(
-                f"[publish-queue] submitted record={record.record_id} "
-                f"draft_id={draft_id} publish_id={publish_id or '-'}"
+                f"[publish-queue] freepublish/submit ok record={record.record_id} "
+                f"draft_id={draft_id} publish_id={publish_id or '-'} msg_data_id={msg_data_id or '-'}"
             )
         except Exception as error:
             failed += 1
@@ -127,6 +152,7 @@ def main() -> int:
             if feishu_service.source_mode == "real":
                 feishu_service.update_record_status(
                     record.record_id,
+                    content_status=settings.FEISHU_STATUS_PUBLISH_FAILED,
                     publish_status="publish_failed",
                     last_error=str(error),
                 )

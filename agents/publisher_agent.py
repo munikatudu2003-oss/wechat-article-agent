@@ -15,6 +15,7 @@ class PublisherAgent:
         return {
             "mode": "dry_run",
             "status": "draft_created",
+            "content_status": "generated",
             "draft_id": "mock-draft-001",
             "publish_id": "",
             "publish_url": "",
@@ -40,6 +41,7 @@ class PublisherAgent:
             return {
                 "mode": "blocked",
                 "status": "review_blocked",
+                "content_status": "failed",
                 "draft_id": "",
                 "publish_id": "",
                 "publish_url": "",
