@@ -14,6 +14,15 @@ from services.wechat_mp_service import WechatMPService
 
 
 class WorkflowService:
+    def _try_update_record_status(self, feishu_service: FeishuService, record_id: str, **fields: str) -> None:
+        try:
+            feishu_service.update_record_status(record_id, **fields)
+        except Exception as error:
+            print(
+                f"[warn] Failed to update Feishu status for {record_id}: {error}",
+                file=sys.stderr,
+            )
+
     def run(self, options: WorkflowOptions | None = None) -> WorkflowRunResult:
         workflow_options = options or WorkflowOptions()
         feishu_service = FeishuService(source_mode=workflow_options.source_mode)
@@ -59,7 +68,8 @@ class WorkflowService:
             try:
                 print(f"[workflow] processing record={record.record_id}")
                 if feishu_service.source_mode == "real":
-                    feishu_service.update_record_status(
+                    self._try_update_record_status(
+                        feishu_service,
                         record.record_id,
                         content_status=settings.FEISHU_STATUS_PROCESSING,
                         publish_status="processing",
@@ -105,7 +115,8 @@ class WorkflowService:
                 publish_status = str(publish_result.get("status", ""))
 
                 if feishu_service.source_mode == "real":
-                    feishu_service.update_record_status(
+                    self._try_update_record_status(
+                        feishu_service,
                         record.record_id,
                         content_status=settings.FEISHU_STATUS_GENERATED,
                         review_status=review.status,
@@ -138,15 +149,13 @@ class WorkflowService:
                 failed_count += 1
                 print(f"[error] Failed to process record {record.record_id}: {error}", file=sys.stderr)
                 if feishu_service.source_mode == "real":
-                    try:
-                        feishu_service.update_record_status(
-                            record.record_id,
-                            content_status=settings.FEISHU_STATUS_FAILED,
-                            publish_status="failed",
-                            last_error=str(error),
-                        )
-                    except Exception as update_error:
-                        print(f"[error] Failed to write error status for {record.record_id}: {update_error}", file=sys.stderr)
+                    self._try_update_record_status(
+                        feishu_service,
+                        record.record_id,
+                        content_status=settings.FEISHU_STATUS_FAILED,
+                        publish_status="failed",
+                        last_error=str(error),
+                    )
 
         return WorkflowRunResult(
             success=failed_count == 0,

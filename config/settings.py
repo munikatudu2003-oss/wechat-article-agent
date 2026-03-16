@@ -19,7 +19,9 @@ def _load_dotenv(env_path: Path) -> None:
         key, value = line.split("=", 1)
         key = key.strip()
         value = value.strip().strip('"').strip("'")
-        if key and key not in os.environ:
+        if key:
+            # Prefer the project-local .env so workspace-specific credentials
+            # are not shadowed by stale machine-level environment variables.
             os.environ[key] = value
 
 

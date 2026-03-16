@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from urllib.error import HTTPError
 from urllib import parse, request
 
 from config import settings
 from models.article import ArticleTask
-from utils.time_utils import now_iso
+from utils.time_utils import now_epoch_millis
 
 
 class FeishuService:
@@ -31,8 +32,6 @@ class FeishuService:
             records = [self.get_mock_record()]
         else:
             records = self.get_real_records(limit=limit or settings.FEISHU_MAX_RECORDS)
-            if settings.FEISHU_PENDING_ONLY:
-                records = [record for record in records if not record.content_status or record.content_status == settings.FEISHU_STATUS_PENDING]
 
         if limit is not None:
             return records[:limit]
@@ -63,7 +62,20 @@ class FeishuService:
             fields = record.get("fields")
             if not isinstance(fields, dict):
                 continue
+            title = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_TITLE))
+            if not title:
+                title = self._coerce_to_text(fields.get("title"))
+            if not title:
+                # Empty starter rows are common in fresh bitables; skip them.
+                continue
+
+            content_status = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_CONTENT_STATUS))
+            if settings.FEISHU_PENDING_ONLY and content_status and content_status != settings.FEISHU_STATUS_PENDING:
+                continue
+
             tasks.append(self._map_record_fields(record, fields))
+            if len(tasks) >= limit:
+                break
 
         return tasks
 
@@ -108,7 +120,7 @@ class FeishuService:
         if last_error is not None:
             fields[settings.FEISHU_FIELD_LAST_ERROR] = last_error
 
-        fields[settings.FEISHU_FIELD_PROCESSED_AT] = now_iso()
+        fields[settings.FEISHU_FIELD_PROCESSED_AT] = now_epoch_millis()
 
         if self._source_mode == "mock":
             return {"mode": "mock", "record_id": record_id, "fields": fields}
@@ -151,23 +163,44 @@ class FeishuService:
         return token
 
     def _fetch_bitable_records(self, tenant_access_token: str, limit: int) -> list[dict[str, Any]]:
-        query: dict[str, str] = {"page_size": str(settings.FEISHU_PAGE_SIZE)}
+        page_size = max(settings.FEISHU_PAGE_SIZE, min(max(limit * 20, 20), 100))
+        query: dict[str, str] = {"page_size": str(page_size)}
         if settings.FEISHU_VIEW_ID:
             query["view_id"] = settings.FEISHU_VIEW_ID
 
-        data = self._request_json(
-            method="GET",
-            path=f"/bitable/v1/apps/{settings.FEISHU_APP_TOKEN}/tables/{settings.FEISHU_TABLE_ID}/records",
-            headers={"Authorization": f"Bearer {tenant_access_token}"},
-            query=query,
-        )
+        records: list[dict[str, Any]] = []
+        page_token = ""
 
-        items = data.get("items")
-        if not isinstance(items, list) or not items:
+        while True:
+            current_query = dict(query)
+            if page_token:
+                current_query["page_token"] = page_token
+
+            data = self._request_json(
+                method="GET",
+                path=f"/bitable/v1/apps/{settings.FEISHU_APP_TOKEN}/tables/{settings.FEISHU_TABLE_ID}/records",
+                headers={"Authorization": f"Bearer {tenant_access_token}"},
+                query=current_query,
+            )
+
+            items = data.get("items")
+            if not isinstance(items, list):
+                raise ValueError("Feishu bitable returned an invalid records list.")
+
+            records.extend(item for item in items if isinstance(item, dict))
+            if len(records) >= page_size and not data.get("has_more"):
+                break
+            if not data.get("has_more"):
+                break
+
+            page_token = self._coerce_to_text(data.get("page_token"))
+            if not page_token:
+                break
+
+        if not records:
             raise ValueError("Feishu bitable returned no records.")
 
-        valid_items = [item for item in items if isinstance(item, dict)]
-        return valid_items[:limit]
+        return records
 
     def _update_bitable_record(self, tenant_access_token: str, record_id: str, fields: dict[str, Any]) -> dict[str, Any]:
         return self._request_json(
@@ -198,8 +231,22 @@ class FeishuService:
             body = json.dumps(payload).encode("utf-8")
 
         req = request.Request(url=url, data=body, headers=request_headers, method=method)
-        with request.urlopen(req, timeout=20) as response:
-            raw = response.read().decode("utf-8")
+        try:
+            with request.urlopen(req, timeout=20) as response:
+                raw = response.read().decode("utf-8")
+        except HTTPError as error:
+            raw = error.read().decode("utf-8", errors="replace")
+            try:
+                parsed_error = json.loads(raw)
+            except json.JSONDecodeError:
+                raise ValueError(f"Feishu API HTTP {error.code}: {raw}") from error
+
+            if isinstance(parsed_error, dict):
+                code = parsed_error.get("code", error.code)
+                msg = parsed_error.get("msg") or parsed_error.get("message") or raw
+                raise ValueError(f"Feishu API error {code}: {msg}") from error
+
+            raise ValueError(f"Feishu API HTTP {error.code}: {raw}") from error
 
         parsed = json.loads(raw)
         if not isinstance(parsed, dict):
@@ -212,6 +259,15 @@ class FeishuService:
 
         data = parsed.get("data")
         if not isinstance(data, dict):
+            # Some Feishu endpoints, including tenant_access_token, return useful
+            # fields at the top level instead of nesting them under data.
+            top_level = {
+                key: value
+                for key, value in parsed.items()
+                if key not in {"code", "msg", "message"}
+            }
+            if top_level:
+                return top_level
             raise ValueError("Feishu API response did not include a valid data object.")
         return data
 
