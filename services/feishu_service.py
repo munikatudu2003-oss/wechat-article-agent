@@ -37,6 +37,40 @@ class FeishuService:
             return records[:limit]
         return records
 
+    def list_publish_queue_records(self, limit: int | None = None) -> list[ArticleTask]:
+        max_records = limit or settings.FEISHU_MAX_RECORDS
+        if self._source_mode == "mock":
+            return [self.get_mock_record()][:max_records]
+        records = self._list_filtered_records(
+            limit=max_records,
+            content_statuses={settings.FEISHU_STATUS_GENERATED},
+        )
+        queued: list[ArticleTask] = []
+        for record in records:
+            if not record.content_markdown.strip():
+                continue
+            if not self._can_queue_for_publish(record):
+                continue
+            queued.append(record)
+            if len(queued) >= max_records:
+                break
+        return queued
+
+    def list_status_sync_records(self, limit: int | None = None) -> list[ArticleTask]:
+        max_records = limit or settings.FEISHU_MAX_RECORDS
+        if self._source_mode == "mock":
+            return []
+        records = self._list_filtered_records(limit=max_records * 5)
+        syncing: list[ArticleTask] = []
+        for record in records:
+            publish_id = record.publish_id.strip()
+            if not publish_id or publish_id.startswith("mock-"):
+                continue
+            syncing.append(record)
+            if len(syncing) >= max_records:
+                break
+        return syncing
+
     def get_mock_record(self) -> ArticleTask:
         return ArticleTask(
             record_id="mock-record-001",
@@ -50,13 +84,31 @@ class FeishuService:
             cover_prompt="TODO: add cover asset before real publish",
             cover_path="",
             source_url="mock://feishu/article-record/001",
+            review_status="approved",
+            content_status=settings.FEISHU_STATUS_GENERATED,
         )
 
     def get_real_records(self, limit: int) -> list[ArticleTask]:
+        return self._list_filtered_records(
+            limit=limit,
+            content_statuses={settings.FEISHU_STATUS_PENDING} if settings.FEISHU_PENDING_ONLY else None,
+        )
+
+    def _list_filtered_records(
+        self,
+        *,
+        limit: int,
+        content_statuses: set[str] | None = None,
+    ) -> list[ArticleTask]:
+        if self._source_mode == "mock":
+            records = [self.get_mock_record()]
+            return records[:limit]
+
         self._validate_real_mode_settings()
         tenant_access_token = self._get_tenant_access_token()
         raw_records = self._fetch_bitable_records(tenant_access_token, limit=limit)
         tasks: list[ArticleTask] = []
+        normalized_statuses = {status.strip() for status in (content_statuses or set()) if status.strip()}
 
         for record in raw_records:
             fields = record.get("fields")
@@ -70,7 +122,7 @@ class FeishuService:
                 continue
 
             content_status = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_CONTENT_STATUS))
-            if settings.FEISHU_PENDING_ONLY and content_status and content_status != settings.FEISHU_STATUS_PENDING:
+            if normalized_statuses and content_status not in normalized_statuses:
                 continue
 
             tasks.append(self._map_record_fields(record, fields))
@@ -78,6 +130,25 @@ class FeishuService:
                 break
 
         return tasks
+
+    def _can_queue_for_publish(self, record: ArticleTask) -> bool:
+        publish_id = record.publish_id.strip()
+        draft_id = record.draft_id.strip()
+        publish_status = record.publish_status.strip().lower()
+
+        if publish_id and not publish_id.startswith("mock-"):
+            return False
+
+        if publish_status in {"publish_submitted", "publishing", "published"}:
+            return False
+
+        if draft_id and not draft_id.startswith("mock-") and publish_status == "draft_created":
+            return True
+
+        if not draft_id or draft_id.startswith("mock-"):
+            return True
+
+        return publish_status in {"", "draft_ready", "draft_created"}
 
     def update_record_status(
         self,
@@ -288,6 +359,12 @@ class FeishuService:
         cover_prompt = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_COVER_PROMPT))
         cover_path = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_COVER_PATH))
         content_status = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_CONTENT_STATUS))
+        review_status = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_REVIEW_STATUS))
+        draft_id = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_DRAFT_ID))
+        publish_status = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_PUBLISH_STATUS))
+        publish_id = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_PUBLISH_ID))
+        publish_url = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_PUBLISH_URL))
+        last_error = self._coerce_to_text(fields.get(settings.FEISHU_FIELD_LAST_ERROR))
 
         if not summary:
             summary = "Imported from a live Feishu record. Review the mapped fields before using this draft for real publishing."
@@ -306,6 +383,12 @@ class FeishuService:
             cover_path=cover_path,
             source_url=source_url or f"feishu://bitable/{record_id}",
             content_status=content_status,
+            review_status=review_status,
+            draft_id=draft_id,
+            publish_status=publish_status,
+            publish_id=publish_id,
+            publish_url=publish_url,
+            last_error=last_error,
         )
 
     def _coerce_to_text(self, value: Any) -> str:

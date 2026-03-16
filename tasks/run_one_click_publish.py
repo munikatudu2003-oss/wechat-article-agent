@@ -10,7 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from models.workflow import WorkflowOptions  # noqa: E402
-from services import WorkflowService  # noqa: E402
+from services.workflow_service import WorkflowService  # noqa: E402
 
 
 def _to_bool(value: str) -> bool:

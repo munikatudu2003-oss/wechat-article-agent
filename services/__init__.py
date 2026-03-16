@@ -5,7 +5,6 @@ from .markdown_service import MarkdownService
 from .output_service import OutputService
 from .wechat_mp_service import WechatMPService
 from .wechat_publisher_service import WechatPublisherService
-from .workflow_service import WorkflowService
 
 __all__ = [
     "CommandService",
@@ -15,5 +14,4 @@ __all__ = [
     "OutputService",
     "WechatMPService",
     "WechatPublisherService",
-    "WorkflowService",
 ]

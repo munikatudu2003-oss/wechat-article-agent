@@ -17,6 +17,12 @@ class ArticleTask:
     cover_path: str
     source_url: str
     content_status: str = ""
+    review_status: str = ""
+    draft_id: str = ""
+    publish_status: str = ""
+    publish_id: str = ""
+    publish_url: str = ""
+    last_error: str = ""
 
 
 @dataclass
