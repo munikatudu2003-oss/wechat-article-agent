@@ -16,6 +16,7 @@ class FeishuService:
         if self._source_mode not in {"mock", "real"}:
             raise ValueError("FEISHU_SOURCE_MODE must be either 'mock' or 'real'.")
         self._tenant_access_token: str | None = None
+        self._field_name_cache: dict[str, str] | None = None
 
     @property
     def source_mode(self) -> str:
@@ -26,6 +27,21 @@ class FeishuService:
         if not records:
             raise ValueError(f"No records available in FeishuService mode '{self._source_mode}'.")
         return records[0]
+
+    def get_record_by_id(self, record_id: str) -> ArticleTask:
+        if self._source_mode == "mock":
+            record = self.get_mock_record()
+            if record.record_id != record_id:
+                raise ValueError(f"Mock Feishu record '{record_id}' was not found.")
+            return record
+
+        self._validate_real_mode_settings()
+        tenant_access_token = self._get_tenant_access_token()
+        record = self._fetch_bitable_record(tenant_access_token, record_id)
+        fields = record.get("fields")
+        if not isinstance(fields, dict):
+            raise ValueError(f"Feishu record '{record_id}' does not contain valid fields.")
+        return self._map_record_fields(record, fields)
 
     def list_pending_records(self, limit: int | None = None) -> list[ArticleTask]:
         if self._source_mode == "mock":
@@ -198,7 +214,8 @@ class FeishuService:
 
         self._validate_real_mode_settings()
         tenant_access_token = self._get_tenant_access_token()
-        return self._update_bitable_record(tenant_access_token, record_id, fields)
+        resolved_fields = self._resolve_update_fields(tenant_access_token, record_id, fields)
+        return self._update_bitable_record(tenant_access_token, record_id, resolved_fields)
 
     def _validate_real_mode_settings(self) -> None:
         required = {
@@ -283,6 +300,39 @@ class FeishuService:
             },
             payload={"fields": fields},
         )
+
+    def _fetch_bitable_record(self, tenant_access_token: str, record_id: str) -> dict[str, Any]:
+        data = self._request_json(
+            method="GET",
+            path=f"/bitable/v1/apps/{settings.FEISHU_APP_TOKEN}/tables/{settings.FEISHU_TABLE_ID}/records/{record_id}",
+            headers={"Authorization": f"Bearer {tenant_access_token}"},
+        )
+        record = data.get("record")
+        if not isinstance(record, dict):
+            raise ValueError("Feishu bitable did not return a valid record object.")
+        return record
+
+    def _resolve_update_fields(
+        self,
+        tenant_access_token: str,
+        record_id: str,
+        fields: dict[str, Any],
+    ) -> dict[str, Any]:
+        if self._field_name_cache is None:
+            record = self._fetch_bitable_record(tenant_access_token, record_id)
+            record_fields = record.get("fields")
+            if not isinstance(record_fields, dict):
+                raise ValueError("Feishu record fields are missing while resolving field names.")
+            self._field_name_cache = {
+                key: self._find_field_key(record_fields, key) or key
+                for key in fields.keys()
+            }
+
+        resolved: dict[str, Any] = {}
+        for key, value in fields.items():
+            resolved_key = (self._field_name_cache or {}).get(key) or key
+            resolved[resolved_key] = value
+        return resolved
 
     def _request_json(
         self,
@@ -423,10 +473,16 @@ class FeishuService:
             return None
 
     def _get_field_value(self, fields: dict[str, Any], configured_name: str, aliases: tuple[str, ...] = ()) -> Any:
+        matched_key = self._find_field_key(fields, configured_name, aliases=aliases)
+        if matched_key is not None:
+            return fields[matched_key]
+        return None
+
+    def _find_field_key(self, fields: dict[str, Any], configured_name: str, aliases: tuple[str, ...] = ()) -> str | None:
         candidates = [configured_name, *aliases]
         for candidate in candidates:
             if candidate and candidate in fields:
-                return fields[candidate]
+                return candidate
 
         lowered = {str(key).strip().lower(): key for key in fields.keys()}
         for candidate in candidates:
@@ -434,7 +490,7 @@ class FeishuService:
                 continue
             matched_key = lowered.get(candidate.strip().lower())
             if matched_key is not None:
-                return fields[matched_key]
+                return matched_key
 
         for candidate in candidates:
             token = candidate.strip()
@@ -443,6 +499,6 @@ class FeishuService:
             for key in fields.keys():
                 key_text = str(key).strip()
                 if key_text.endswith(token):
-                    return fields[key]
+                    return str(key)
 
         return None

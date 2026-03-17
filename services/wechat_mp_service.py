@@ -208,6 +208,8 @@ class WechatMPService:
         if not settings.WECHAT_THUMB_MEDIA_ID:
             raise ValueError("Real WeChat publishing requires WECHAT_THUMB_MEDIA_ID.")
 
+        source_link = self._normalize_source_url(source_url)
+
         payload = {
             "articles": [
                 {
@@ -215,7 +217,7 @@ class WechatMPService:
                     "author": settings.WECHAT_AUTHOR,
                     "digest": draft.summary,
                     "content": html,
-                    "content_source_url": source_url or settings.WECHAT_CONTENT_SOURCE_URL,
+                    "content_source_url": source_link,
                     "thumb_media_id": settings.WECHAT_THUMB_MEDIA_ID,
                     "need_open_comment": settings.WECHAT_NEED_OPEN_COMMENT,
                     "only_fans_can_comment": settings.WECHAT_ONLY_FANS_CAN_COMMENT,
@@ -304,3 +306,14 @@ class WechatMPService:
         if publish_status_code in {2, 3, 4, 5, 6}:
             return settings.FEISHU_STATUS_PUBLISH_FAILED
         return settings.FEISHU_STATUS_PUBLISHING
+
+    def _normalize_source_url(self, source_url: str) -> str:
+        candidate = self._coerce_text(source_url)
+        if candidate.startswith("http://") or candidate.startswith("https://"):
+            return candidate
+
+        fallback = self._coerce_text(settings.WECHAT_CONTENT_SOURCE_URL)
+        if fallback.startswith("http://") or fallback.startswith("https://"):
+            return fallback
+
+        return ""
