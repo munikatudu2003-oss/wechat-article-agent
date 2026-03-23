@@ -120,17 +120,16 @@ class ApiWorkflowService:
         )
         output_payload = {key: str(path) for key, path in output_paths.items()}
 
-        if self._feishu.source_mode == "real":
-            self._feishu.update_record_status(
-                record.record_id,
-                content_status=settings.FEISHU_STATUS_GENERATED,
-                review_status=review.status,
-                summary=draft.summary,
-                content_markdown=draft.markdown,
-                cover_prompt=draft.cover_todo,
-                cover_path=record.cover_path,
-                last_error="",
-            )
+        self._feishu.update_record_status(
+            record.record_id,
+            content_status=settings.FEISHU_STATUS_GENERATED,
+            review_status=review.status,
+            summary=draft.summary,
+            content_markdown=draft.markdown,
+            cover_prompt=draft.cover_todo,
+            cover_path=record.cover_path,
+            last_error="",
+        )
 
         return {
             "status": "ok",
@@ -151,17 +150,16 @@ class ApiWorkflowService:
         output_paths = self._outputs.save_outputs(DRAFTS_DIR, file_stem, draft, review, html, {})
         output_payload = {key: str(path) for key, path in output_paths.items()}
 
-        if self._feishu.source_mode == "real":
-            self._feishu.update_record_status(
-                record.record_id,
-                content_status=settings.FEISHU_STATUS_GENERATED,
-                review_status=review.status,
-                summary=draft.summary,
-                content_markdown=draft.markdown,
-                cover_prompt=draft.cover_todo,
-                cover_path=record.cover_path,
-                last_error="",
-            )
+        self._feishu.update_record_status(
+            record.record_id,
+            content_status=settings.FEISHU_STATUS_GENERATED,
+            review_status=review.status,
+            summary=draft.summary,
+            content_markdown=draft.markdown,
+            cover_prompt=draft.cover_todo,
+            cover_path=record.cover_path,
+            last_error="",
+        )
 
         return {
             "status": "ok",
@@ -218,20 +216,19 @@ class ApiWorkflowService:
             else self._wechat.create_draft(draft=draft, html=html, source_url=record.source_url)
         )
 
-        if self._feishu.source_mode == "real":
-            self._feishu.update_record_status(
-                record.record_id,
-                content_status=settings.FEISHU_STATUS_GENERATED,
-                review_status=review.status,
-                draft_id=draft_id,
-                publish_status="draft_created",
-                publish_id="",
-                summary=draft.summary,
-                content_markdown=draft.markdown,
-                cover_prompt=draft.cover_todo,
-                cover_path=record.cover_path,
-                last_error="",
-            )
+        self._feishu.update_record_status(
+            record.record_id,
+            content_status=settings.FEISHU_STATUS_GENERATED,
+            review_status=review.status,
+            draft_id=draft_id,
+            publish_status="draft_created",
+            publish_id="",
+            summary=draft.summary,
+            content_markdown=draft.markdown,
+            cover_prompt=draft.cover_todo,
+            cover_path=record.cover_path,
+            last_error="",
+        )
 
         return {
             "status": "ok",
@@ -243,6 +240,25 @@ class ApiWorkflowService:
     def submit_publish(self, record_id: str | None = None) -> dict[str, object]:
         record = self._resolve_record(record_id, kind="publish_queue")
 
+        if self._feishu.source_mode == "mock":
+            draft_id = record.draft_id or "mock-draft-001"
+            publish_id = "mock-publish-001"
+            self._feishu.update_record_status(
+                record.record_id,
+                content_status=settings.FEISHU_STATUS_PUBLISHING,
+                draft_id=draft_id,
+                publish_status="publish_submitted",
+                publish_id=publish_id,
+                publish_url="",
+                last_error="",
+            )
+            return {
+                "status": "ok",
+                "stage": "publish_submitted",
+                "record_id": record.record_id,
+                "publish_id": publish_id,
+            }
+
         if not record.draft_id or record.draft_id.startswith("mock-"):
             return {
                 "status": "failed",
@@ -250,26 +266,17 @@ class ApiWorkflowService:
                 "record_id": record.record_id,
             }
 
-        if self._feishu.source_mode == "mock":
-            return {
-                "status": "ok",
-                "stage": "publish_submitted",
-                "record_id": record.record_id,
-                "publish_id": "mock-publish-001",
-            }
-
         publish_response = self._wechat.submit_publish(record.draft_id)
         publish_id = str(publish_response.get("publish_id", ""))
 
-        if self._feishu.source_mode == "real":
-            self._feishu.update_record_status(
-                record.record_id,
-                content_status=settings.FEISHU_STATUS_PUBLISHING,
-                publish_status="publish_submitted",
-                publish_id=publish_id,
-                publish_url="",
-                last_error="",
-            )
+        self._feishu.update_record_status(
+            record.record_id,
+            content_status=settings.FEISHU_STATUS_PUBLISHING,
+            publish_status="publish_submitted",
+            publish_id=publish_id,
+            publish_url="",
+            last_error="",
+        )
 
         return {
             "status": "ok",
@@ -283,10 +290,23 @@ class ApiWorkflowService:
         record = self._resolve_record(record_id, kind="sync")
 
         if self._feishu.source_mode == "mock":
+            publish_url = "https://mp.weixin.qq.com/s/mock-publish-url"
+            self._feishu.update_record_status(
+                record.record_id,
+                content_status=settings.FEISHU_STATUS_PUBLISHED,
+                publish_status="published",
+                publish_id=record.publish_id or "mock-publish-001",
+                publish_url=publish_url,
+                last_error="",
+            )
             return {
                 "status": "ok",
-                "stage": "publishing",
+                "stage": "published",
                 "record_id": record.record_id,
+                "publish_status": "published",
+                "publish_status_code": 0,
+                "publish_url": publish_url,
+                "article_id": "mock-article-001",
             }
 
         if not record.publish_id:
@@ -305,15 +325,14 @@ class ApiWorkflowService:
             article_payload = self._wechat.get_published_article(article_id)
             publish_url = self._wechat.extract_article_url_from_payload(article_payload)
 
-        if self._feishu.source_mode == "real":
-            self._feishu.update_record_status(
-                record.record_id,
-                content_status=str(normalized["content_status"]),
-                publish_status=str(normalized["publish_status"]),
-                publish_id=str(normalized["publish_id"]) or record.publish_id,
-                publish_url=publish_url or record.publish_url,
-                last_error=str(normalized["last_error"]),
-            )
+        self._feishu.update_record_status(
+            record.record_id,
+            content_status=str(normalized["content_status"]),
+            publish_status=str(normalized["publish_status"]),
+            publish_id=str(normalized["publish_id"]) or record.publish_id,
+            publish_url=publish_url or record.publish_url,
+            last_error=str(normalized["last_error"]),
+        )
 
         return {
             "status": "ok",
@@ -328,14 +347,13 @@ class ApiWorkflowService:
     def mark_manual_publish(self, record_id: str, publish_url: str) -> dict[str, object]:
         record = self._feishu.get_record_by_id(record_id)
 
-        if self._feishu.source_mode == "real":
-            self._feishu.update_record_status(
-                record.record_id,
-                content_status=settings.FEISHU_STATUS_PUBLISHED,
-                publish_status="published",
-                publish_url=publish_url,
-                last_error="",
-            )
+        self._feishu.update_record_status(
+            record.record_id,
+            content_status=settings.FEISHU_STATUS_PUBLISHED,
+            publish_status="published",
+            publish_url=publish_url,
+            last_error="",
+        )
 
         return {
             "status": "ok",

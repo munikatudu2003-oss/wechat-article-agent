@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from typing import Any
 from urllib.error import HTTPError
 from urllib import parse, request
@@ -8,6 +9,29 @@ from urllib import parse, request
 from config import settings
 from models.article import ArticleTask
 from utils.time_utils import now_epoch_millis
+
+
+def _build_mock_record() -> ArticleTask:
+    return ArticleTask(
+        record_id="mock-record-001",
+        title="Turning a Feishu note into a WeChat article draft",
+        summary="This mock draft shows the full offline pipeline from a local record through review, formatting, and a dry-run publish result.",
+        column_type="Automation",
+        keywords="wechat, feishu, mock",
+        target_words=800,
+        source_material="Local mock record for smoke testing.",
+        content_markdown="",
+        cover_prompt="TODO: add cover asset before real publish",
+        cover_path="",
+        source_url="mock://feishu/article-record/001",
+        review_status="approved",
+        content_status=settings.FEISHU_STATUS_GENERATED,
+    )
+
+
+_MOCK_RECORDS: dict[str, ArticleTask] = {
+    "mock-record-001": _build_mock_record(),
+}
 
 
 class FeishuService:
@@ -88,21 +112,8 @@ class FeishuService:
         return syncing
 
     def get_mock_record(self) -> ArticleTask:
-        return ArticleTask(
-            record_id="mock-record-001",
-            title="Turning a Feishu note into a WeChat article draft",
-            summary="This mock draft shows the full offline pipeline from a local record through review, formatting, and a dry-run publish result.",
-            column_type="Automation",
-            keywords="wechat, feishu, mock",
-            target_words=800,
-            source_material="Local mock record for smoke testing.",
-            content_markdown="",
-            cover_prompt="TODO: add cover asset before real publish",
-            cover_path="",
-            source_url="mock://feishu/article-record/001",
-            review_status="approved",
-            content_status=settings.FEISHU_STATUS_GENERATED,
-        )
+        record = _MOCK_RECORDS["mock-record-001"]
+        return ArticleTask(**asdict(record))
 
     def get_real_records(self, limit: int) -> list[ArticleTask]:
         return self._list_filtered_records(
@@ -210,6 +221,31 @@ class FeishuService:
         fields[settings.FEISHU_FIELD_PROCESSED_AT] = now_epoch_millis()
 
         if self._source_mode == "mock":
+            record = _MOCK_RECORDS.get(record_id)
+            if record is None:
+                raise ValueError(f"Mock Feishu record '{record_id}' was not found.")
+            if content_status is not None:
+                record.content_status = content_status
+            if review_status is not None:
+                record.review_status = review_status
+            if draft_id is not None:
+                record.draft_id = draft_id
+            if publish_status is not None:
+                record.publish_status = publish_status
+            if publish_id is not None:
+                record.publish_id = publish_id
+            if publish_url is not None:
+                record.publish_url = publish_url
+            if summary is not None:
+                record.summary = summary
+            if content_markdown is not None:
+                record.content_markdown = content_markdown
+            if cover_prompt is not None:
+                record.cover_prompt = cover_prompt
+            if cover_path is not None:
+                record.cover_path = cover_path
+            if last_error is not None:
+                record.last_error = last_error
             return {"mode": "mock", "record_id": record_id, "fields": fields}
 
         self._validate_real_mode_settings()
