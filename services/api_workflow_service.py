@@ -41,6 +41,41 @@ class ApiWorkflowService:
             raise ValueError("No records available for requested operation.")
         return records[0]
 
+    def pick_record(self, *, kind: str, record_id: str | None = None) -> dict[str, object]:
+        if record_id:
+            record = self._feishu.get_record_by_id(record_id)
+            return {
+                "status": "ok",
+                "stage": "record_selected",
+                "record_id": record.record_id,
+                "record": asdict(record),
+            }
+
+        if kind == "pending":
+            records = self._feishu.list_pending_records(limit=1)
+        elif kind == "publish_queue":
+            records = self._feishu.list_publish_queue_records(limit=1)
+        elif kind == "sync":
+            records = self._feishu.list_status_sync_records(limit=1)
+        else:
+            raise ValueError(f"Unknown record selector: {kind}")
+
+        if not records:
+            return {
+                "status": "ok",
+                "stage": "none_available",
+                "record_id": "",
+                "record": None,
+            }
+
+        record = records[0]
+        return {
+            "status": "ok",
+            "stage": "record_selected",
+            "record_id": record.record_id,
+            "record": asdict(record),
+        }
+
     def _review_from_payload(self, status: str | None, notes: list[str] | None) -> ReviewDecision:
         normalized_status = (status or "approved").strip() or "approved"
         normalized_notes = [note.strip() for note in (notes or []) if note and note.strip()]

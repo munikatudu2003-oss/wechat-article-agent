@@ -15,6 +15,12 @@ class RecordRequest(BaseModel):
     source_mode: Optional[str] = None
 
 
+class PickRecordRequest(BaseModel):
+    source_mode: Optional[str] = None
+    kind: str = "pending"
+    record_id: Optional[str] = None
+
+
 class IngestDraftRequest(BaseModel):
     record_id: str
     source_mode: Optional[str] = None
@@ -63,6 +69,14 @@ def create_app() -> FastAPI:
     ) -> dict[str, object]:
         service = ApiWorkflowService(source_mode=payload.source_mode)
         return service.generate_draft(record_id=payload.record_id)
+
+    @app.post("/pick-record")
+    def pick_record(
+        payload: PickRecordRequest,
+        _: None = Depends(_verify_token),
+    ) -> dict[str, object]:
+        service = ApiWorkflowService(source_mode=payload.source_mode)
+        return service.pick_record(kind=payload.kind, record_id=payload.record_id)
 
     @app.post("/create-draft")
     def create_draft(

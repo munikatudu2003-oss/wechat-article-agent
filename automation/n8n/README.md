@@ -7,6 +7,9 @@ These workflow templates orchestrate the local HTTP API exposed by `wechat-artic
 - `workflows/01-generate-draft.json`
 - `workflows/02-create-and-submit.json`
 - `workflows/03-sync-status.json`
+- `workflows/04-coze-full-flow.json`
+- `coze-payload-examples.md`
+- `n8n-node-setup-guide.md`
 
 For Coze-driven generation, use the local API endpoint `/ingest-draft` after Coze returns structured content.
 
@@ -119,3 +122,13 @@ Recommended n8n handling:
 - Runs daily every 30 minutes between 09:30 and 22:30
 - Calls `/sync-status`
 - Moves `publishing -> published`
+
+### 04 Coze full flow
+
+- Runs daily at 09:00 Asia/Shanghai
+- Calls `/pick-record`
+- Sends record context into Coze
+- Calls `/ingest-draft`
+- Calls `/create-draft`
+- Calls `/submit-publish`
+- Calls `/sync-status`
