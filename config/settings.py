@@ -80,3 +80,7 @@ WECHAT_CONTENT_SOURCE_URL = os.getenv("WECHAT_CONTENT_SOURCE_URL", "").strip()
 WECHAT_NEED_OPEN_COMMENT = 1 if os.getenv("WECHAT_NEED_OPEN_COMMENT", "false").strip().lower() == "true" else 0
 WECHAT_ONLY_FANS_CAN_COMMENT = 1 if os.getenv("WECHAT_ONLY_FANS_CAN_COMMENT", "false").strip().lower() == "true" else 0
 WECHAT_AUTO_SUBMIT_PUBLISH = os.getenv("WECHAT_AUTO_SUBMIT_PUBLISH", "false").strip().lower() == "true"
+
+API_HOST = os.getenv("WECHAT_AGENT_API_HOST", "127.0.0.1").strip() or "127.0.0.1"
+API_PORT = int(os.getenv("WECHAT_AGENT_API_PORT", "8088"))
+API_BEARER_TOKEN = os.getenv("WECHAT_AGENT_API_TOKEN", "").strip()

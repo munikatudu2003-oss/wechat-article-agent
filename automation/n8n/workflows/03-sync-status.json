@@ -1,0 +1,154 @@
+{
+  "name": "wechat-article-agent - 03 sync status",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/30 9-22 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-sync",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.WECHAT_AGENT_API_BASE_URL || 'http://127.0.0.1:8088') + '/sync-status' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ $env.WECHAT_AGENT_API_TOKEN ? 'Bearer ' + $env.WECHAT_AGENT_API_TOKEN : '' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ source_mode: $env.WECHAT_AGENT_SOURCE_MODE || 'real' }) }}"
+      },
+      "id": "http-sync-status",
+      "name": "Sync Status API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "equal",
+              "value2": "ok"
+            }
+          ]
+        }
+      },
+      "id": "if-sync-ok",
+      "name": "Sync OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        840,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ { workflow: 'sync-status', status: $json.status, stage: $json.stage, record_id: $json.record_id, publish_status: $json.publish_status, publish_url: $json.publish_url } }}"
+      },
+      "id": "set-sync-success",
+      "name": "Sync Success",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1120,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ { workflow: 'sync-status', status: $json.status || 'failed', stage: $json.stage || 'sync_failed', error: $json.error || 'Sync failed' } }}"
+      },
+      "id": "set-sync-failure",
+      "name": "Sync Failure",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1120,
+        380
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Sync Status API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Status API": {
+      "main": [
+        [
+          {
+            "node": "Sync OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync OK?": {
+      "main": [
+        [
+          {
+            "node": "Sync Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sync Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "Asia/Shanghai"
+  },
+  "pinData": {},
+  "active": false
+}

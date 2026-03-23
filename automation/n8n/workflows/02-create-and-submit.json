@@ -1,0 +1,251 @@
+{
+  "name": "wechat-article-agent - 02 create draft and submit",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "5 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-publish",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.WECHAT_AGENT_API_BASE_URL || 'http://127.0.0.1:8088') + '/create-draft' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ $env.WECHAT_AGENT_API_TOKEN ? 'Bearer ' + $env.WECHAT_AGENT_API_TOKEN : '' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ source_mode: $env.WECHAT_AGENT_SOURCE_MODE || 'real' }) }}"
+      },
+      "id": "http-create-draft",
+      "name": "Create Draft API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        320
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "equal",
+              "value2": "ok"
+            }
+          ]
+        }
+      },
+      "id": "if-draft-ok",
+      "name": "Draft Ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        840,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.WECHAT_AGENT_API_BASE_URL || 'http://127.0.0.1:8088') + '/submit-publish' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ $env.WECHAT_AGENT_API_TOKEN ? 'Bearer ' + $env.WECHAT_AGENT_API_TOKEN : '' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ record_id: $json.record_id, source_mode: $env.WECHAT_AGENT_SOURCE_MODE || 'real' }) }}"
+      },
+      "id": "http-submit-publish",
+      "name": "Submit Publish API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        220
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ { workflow: 'create-and-submit', status: $json.status || 'failed', stage: $json.stage || 'draft_failed', error: $json.error || 'Draft creation blocked' } }}"
+      },
+      "id": "set-draft-failure",
+      "name": "Draft Failure",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1120,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "equal",
+              "value2": "ok"
+            }
+          ]
+        }
+      },
+      "id": "if-submit-ok",
+      "name": "Submit OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ { workflow: 'create-and-submit', status: $json.status, stage: $json.stage, record_id: $json.record_id, draft_id: $json.draft_id, publish_id: $json.publish_id } }}"
+      },
+      "id": "set-submit-success",
+      "name": "Submit Success",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1680,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ { workflow: 'create-and-submit', status: $json.status || 'failed', stage: $json.stage || 'submit_failed', error: $json.error || 'Submit publish failed' } }}"
+      },
+      "id": "set-submit-failure",
+      "name": "Submit Failure",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1680,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Create Draft API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Draft API": {
+      "main": [
+        [
+          {
+            "node": "Draft Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Ready?": {
+      "main": [
+        [
+          {
+            "node": "Submit Publish API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Draft Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit Publish API": {
+      "main": [
+        [
+          {
+            "node": "Submit OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit OK?": {
+      "main": [
+        [
+          {
+            "node": "Submit Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Submit Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "Asia/Shanghai"
+  },
+  "pinData": {},
+  "active": false
+}
